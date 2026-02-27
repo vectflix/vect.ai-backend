@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Rate limit (10 requests per minute per IP)
+// Rate limit
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -21,15 +21,13 @@ const limiter = rateLimit({
 
 app.use("/generate", limiter);
 
-// In-memory IP usage log
+// IP usage tracking
 const usageLog = {};
 
-// Health check
 app.get("/", (req, res) => {
   res.json({ status: "Vect.ai Backend Running" });
 });
 
-// Generate endpoint
 app.post("/generate", async (req, res) => {
   try {
     const userIP = req.ip;
@@ -39,13 +37,11 @@ app.post("/generate", async (req, res) => {
       return res.status(400).json({ error: "Prompt is required" });
     }
 
-    // Track usage per IP
     if (!usageLog[userIP]) {
       usageLog[userIP] = { count: 0 };
     }
     usageLog[userIP].count++;
 
-    // Dynamic model fallback list (safe active models)
     const models = [
       "llama-3.1-8b-instant",
       "llama-3.1-70b-versatile",
@@ -64,10 +60,35 @@ app.post("/generate", async (req, res) => {
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            model: model,
+            model,
             messages: [
-              { role: "system", content: "You are an autonomous website builder AI." },
-              { role: "user", content: prompt }
+              {
+                role: "system",
+                content: `
+You are an autonomous website builder AI.
+
+Return ONLY valid JSON.
+
+Format strictly as:
+
+{
+  "index.html": "...",
+  "style.css": "...",
+  "script.js": "..."
+}
+
+Rules:
+- No markdown
+- No explanations
+- No triple backticks
+- Escape all quotes properly
+- Must be valid JSON
+`
+              },
+              {
+                role: "user",
+                content: prompt
+              }
             ],
             temperature: 0.7
           })
