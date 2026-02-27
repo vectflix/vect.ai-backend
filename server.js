@@ -9,11 +9,10 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Rate limiter (10 requests per minute per IP)
+// Rate limit (10 requests per minute per IP)
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -46,30 +45,57 @@ app.post("/generate", async (req, res) => {
     }
     usageLog[userIP].count++;
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "llama3-8b-8192",
-        messages: [
-          { role: "system", content: "You are an autonomous website builder AI." },
-          { role: "user", content: prompt }
-        ],
-        temperature: 0.7
-      })
-    });
+    // Dynamic model fallback list (safe active models)
+    const models = [
+      "llama-3.1-8b-instant",
+      "llama-3.1-70b-versatile",
+      "gemma2-9b-it"
+    ];
 
-    const data = await response.json();
+    let aiResponse = null;
+    let lastError = null;
 
-    if (!response.ok) {
-      return res.status(500).json({ error: data });
+    for (const model of models) {
+      try {
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: "system", content: "You are an autonomous website builder AI." },
+              { role: "user", content: prompt }
+            ],
+            temperature: 0.7
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          aiResponse = data;
+          break;
+        } else {
+          lastError = data;
+        }
+
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!aiResponse) {
+      return res.status(500).json({
+        error: "All models failed",
+        details: lastError
+      });
     }
 
     res.json({
-      result: data.choices[0].message.content,
+      result: aiResponse.choices[0].message.content,
       usage: usageLog[userIP]
     });
 
