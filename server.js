@@ -9,10 +9,14 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}));
+
 app.use(express.json());
 
-// Rate limit
 const limiter = rateLimit({
   windowMs: 60 * 1000,
   max: 10,
@@ -21,7 +25,6 @@ const limiter = rateLimit({
 
 app.use("/generate", limiter);
 
-// IP usage tracking
 const usageLog = {};
 
 app.get("/", (req, res) => {
@@ -64,31 +67,14 @@ app.post("/generate", async (req, res) => {
             messages: [
               {
                 role: "system",
-                content: `
-You are an autonomous website builder AI.
-
-Return ONLY valid JSON.
-
-Format strictly as:
-
+                content: `Return ONLY valid JSON in this format:
 {
   "index.html": "...",
   "style.css": "...",
   "script.js": "..."
-}
-
-Rules:
-- No markdown
-- No explanations
-- No triple backticks
-- Escape all quotes properly
-- Must be valid JSON
-`
+}`
               },
-              {
-                role: "user",
-                content: prompt
-              }
+              { role: "user", content: prompt }
             ],
             temperature: 0.7
           })
